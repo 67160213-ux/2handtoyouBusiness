@@ -1,0 +1,39 @@
+📋 ภาพรวมขั้นตอนการทำงานของสคริปต์
+PART 1: abnormal listing detection dataset (dataset_abnormal_listing.xlsx)
+(ระบบตรวจจับประกาศขายสินค้าที่ผิดปกติ / สแปม / ผิดกฎหมาย)
+
+รวมข้อมูลชั่วคราว: อ่านไฟล์ Excel จาก 4 ชีท (3_Training_Dataset, 4_Validation_Dataset, 5_Testing_Dataset, 6_UAT_Dataset) มารวมกันด้วย pd.concat พร้อมติดป้ายกำกับชีทต้นทาง เพื่อให้กติกาทำความสะอาดเหมือนกันทุกชุดก่อนแยกกลับ
+จัดการค่า Null (Intentional vs Unexpected):
+เช็ค Scenario Type แยกค่า null ที่ตั้งใจใส่เป็น Negative Test Case (is_intentional_null) ออก เพื่อไม่ให้ลบทิ้งหรือเติมทับผิดพลาด
+ค่า Null ที่ไม่อยู่ใน Negative scenario จะถูก Impute ด้วยค่า median หรือประกอบข้อความจาก Brand + Model
+ทำความสะอาดข้อความ (Text Normalization):
+ดึง Emoji ออกจาก Title และ Description แยกเก็บเป็นฟีเจอร์ธง (Title_has_emoji, Description_has_emoji)
+ตัดช่องว่างส่วนเกิน และคำนวณความยาวข้อความ (Title_length, Description_length)
+Encode ฟีเจอร์ Flag: แปลงค่า string 'Yes'/'No' ในคอลัมน์ตรวจสอบ เช่น Duplicate Image, Keyword Stuffing, Profanity, Counterfeit ฯลฯ ให้เป็น 1 / 0
+Range Validation: ตรวจสอบขอบเขตตัวเลขตาม Data Dictionary เช่น Seller Rating (0.0-5.0), Risk Score (0-100), Confidence Score (0.0-1.0) และเช็คราคาไม่ให้ติดลบ
+One-Hot Encoding & Export: ทำ One-hot encode ให้กับหมวดหมู่ (Category, Condition, Image Quality) แล้วแยกชุดข้อมูลกลับเป็น listing_train_clean.csv, listing_val_clean.csv, listing_test_clean.csv, listing_uat_clean.csv
+Baseline Model: มีตัวอย่างการรัน RandomForestClassifier เพื่อทดสอบทำนายผลลัพธ์ Ground Truth
+PART 2: product recommendation dataset (dataset_recommendation.xlsx)
+(ระบบแนะนำสินค้าแก่ผู้ซื้อ)
+
+บังคับใช้ Business Rules (BR002–BR004, BR009):
+ตรวจสอบรายการสินค้าที่ Product_Status ไม่ใช่ Active แต่ติดป้าย Accept
+ลบรายการที่ Buyer_ID + Product_ID ซ้ำซ้อนกัน (drop_duplicates)
+จัดการ Pipe-Delimited Fields: แปลงข้อความที่คั่นด้วย | ในคอลัมน์ประวัติ เช่น Search_History, View_History, Wishlist ให้กลายเป็น List และนับจำนวนรายการ (_count)
+PDPA / Privacy Scan (BR008): ใช้ Regex สแกนหาข้อมูลส่วนบุคคล (เบอร์โทร, อีเมล, เลขบัตรประชาชน) ในคอลัมน์ข้อความอิสระ (Search_History, Feedback)
+Validation & Consistency Checks:
+เช็คค่า Similarity / Recommendation Scores ให้อยู่ในช่วง 0.0 - 1.0
+ตรวจสอบเงื่อนไขความสอดคล้อง: Historical_Purchases <= Historical_Clicks <= Historical_Views
+Data Integration & Encoding: Join ตาราง Recommendation_Dataset กับ Buyer_Profile ด้วย Buyer_ID และทำ One-hot encoding ให้กับข้อมูลประเภท Category/Brand/Member Level
+Export & Baseline Model:
+บันทึกเป็นไฟล์ CSV ได้แก่ recommendation_clean.csv, cold_start_clean.csv, buyer_behavior_clean.csv, feedback_clean.csv
+มีโค้ดตัวอย่างการรัน RandomForestClassifier เพื่อทำนายผลลัพธ์ Expected_Result (Accept/Reject)
+
+📂 ไฟล์ Output ที่สคริปต์สร้าง (เก็บไว้ในโฟลเดอร์ output/)
+output/listing_train_clean.csv
+output/listing_val_clean.csv
+output/listing_test_clean.csv
+output/listing_uat_clean.csv
+output/recommendation_clean.csv
+output/cold_start_clean.csv
+output/buyer_behavior_clean.csv

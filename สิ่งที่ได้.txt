@@ -1,0 +1,102 @@
+['1_Data_Dictionary', '2_Business_Rules', '3_Training_Dataset', '4_Validation_Dataset', '5_Testing_Dataset', '6_UAT_Dataset', '7_Coverage_Matrix', '8_Acceptance_Criteria']
+train (20000, 45)
+val (2000, 45)
+test (2000, 45)
+uat (1000, 45)
+(25000, 45)
+คอลัมน์ที่มี null: ['Title', 'Price', 'Price Deviation Percentage']
+
+--- Title: null ทั้งหมด 189 แถว ---
+Scenario Type
+NEGATIVE    189
+Name: count, dtype: int64
+
+--- Price: null ทั้งหมด 252 แถว ---
+Scenario Type
+NEGATIVE    252
+Name: count, dtype: int64
+
+--- Price Deviation Percentage: null ทั้งหมด 252 แถว ---
+Scenario Type
+NEGATIVE    252
+Name: count, dtype: int64
+แถวที่มี null แบบไม่ควรมี (นอก NEGATIVE/EDGE): 0
+เหลือ null นอก intentional case: 0
+Seller Rating: 0 แถวหลุดขอบเขต [0.0, 5.0]
+Risk Score: 0 แถวหลุดขอบเขต [0, 100]
+Confidence Score: 0 แถวหลุดขอบเขต [0.0, 1.0]
+Price ติดลบ: 0
+Shape หลัง one-hot encode: (25000, 181)
+จำนวนคอลัมน์ dummy ที่สร้างใหม่: 121
+จำนวนฟีเจอร์: 144
+train: (20000, 181) -> output\listing_train_clean.csv
+val: (2000, 181) -> output\listing_val_clean.csv
+test: (2000, 181) -> output\listing_test_clean.csv
+uat: (1000, 181) -> output\listing_uat_clean.csv
+                        precision    recall  f1-score   support
+
+              BOUNDARY       0.92      1.00      0.96       145
+     CATEGORY_MISMATCH       1.00      1.00      1.00        73
+           COUNTERFEIT       1.00      1.00      1.00        36
+     DUPLICATE_LISTING       1.00      1.00      1.00        55
+             EDGE_CASE       0.95      0.98      0.96        91
+                 FRAUD       1.00      1.00      1.00        55
+             HIGH_RISK       1.00      1.00      1.00        36
+         INVALID_INPUT       0.99      0.98      0.98        91
+          KEYWORD_SPAM       1.00      1.00      1.00        55
+   LOW_QUALITY_LISTING       1.00      1.00      1.00        36
+MISLEADING_DESCRIPTION       1.00      1.00      1.00       109
+                NORMAL       1.00      1.00      1.00       818
+         PRICE_ANOMALY       0.99      1.00      1.00       145
+    PROHIBITED_PRODUCT       1.00      1.00      1.00        36
+                  SCAM       1.00      1.00      1.00        55
+                  SPAM       0.99      0.93      0.96        73
+      SUSPICIOUS_IMAGE       0.96      0.84      0.89        91
+
+              accuracy                           0.99      2000
+             macro avg       0.99      0.98      0.99      2000
+          weighted avg       0.99      0.99      0.99      2000
+
+['01_Data_Dictionary', '02_Business_Rules', '03_Buyer_Profile', '04_Buyer_Behavior', '05_Recommendation_Dataset', '06_Cold_Start_Dataset', '07_Recommendation_Feedback', '08_Coverage_Matrix', '09_Acceptance_Criteria']
+buyer_profile (1000, 16)
+buyer_behavior (5000, 20)
+reco (10000, 32)
+cold_start (500, 17)
+feedback (5000, 15)
+Product_Status ก่อนกรอง:
+Product_Status
+Active      9063
+Sold         538
+Inactive     265
+Deleted      134
+Name: count, dtype: int64
+
+พบ 0 แถวที่ Product_Status ไม่ Active แต่ label เป็น Accept -> ผิด Business Rule ต้องตรวจสอบ/แก้ label
+แถวที่ Buyer_ID+Product_ID ซ้ำ: 0
+Shape ก่อน/หลัง dedup: (10000, 32) -> (10000, 32)
+Search_History -> {}
+Feedback -> {}
+Popularity_Score: 0 แถวหลุดขอบเขต [0,1]
+Trending_Score: 0 แถวหลุดขอบเขต [0,1]
+Embedding_Similarity: 0 แถวหลุดขอบเขต [0,1]
+Category_Similarity: 0 แถวหลุดขอบเขต [0,1]
+Brand_Similarity: 0 แถวหลุดขอบเขต [0,1]
+Price_Similarity: 0 แถวหลุดขอบเขต [0,1]
+Recommendation_Score: 0 แถวหลุดขอบเขต [0,1]
+Confidence_Score: 0 แถวหลุดขอบเขต [0.5,1.0]
+
+แถวที่ Historical_Purchases/Clicks/Views ไม่สอดคล้องกัน: 0
+Shape หลัง join กับ Buyer_Profile: (10000, 47)
+แถวที่ Buyer_ID ไม่มีใน Buyer_Profile (อาจเป็น cold-start buyer): 0
+จำนวนฟีเจอร์: 212
+บันทึกแล้ว -> output\recommendation_clean.csv
+บันทึก cold_start / buyer_behavior / feedback เรียบร้อย
+                           precision    recall  f1-score   support
+
+                   Accept       0.94      1.00      0.97      1709
+Accept - Popularity Based       0.00      0.00      0.00       104
+                   Reject       0.97      0.99      0.98       187
+
+                 accuracy                           0.94      2000
+                macro avg       0.64      0.66      0.65      2000
+             weighted avg       0.90      0.94      0.92      2000
