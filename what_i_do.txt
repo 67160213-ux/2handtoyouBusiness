@@ -1,39 +1,44 @@
-📋 ภาพรวมขั้นตอนการทำงานของสคริปต์
-PART 1: abnormal listing detection dataset (dataset_abnormal_listing.xlsx)
-(ระบบตรวจจับประกาศขายสินค้าที่ผิดปกติ / สแปม / ผิดกฎหมาย)
+📌 ภาพรวม (Overview)
+เป็น สคริปต์ Data Cleaning & Feature Engineering Pipeline สำหรับประมวลผลข้อมูล วางระบบการตรวจเช็กกฎทางธุรกิจ (Business Rules Check) เตรียมฟีเจอร์สำหรับ Machine Learning และทดสอบ Baseline Model สำหรับ 2 โครงการหลัก:
 
-รวมข้อมูลชั่วคราว: อ่านไฟล์ Excel จาก 4 ชีท (3_Training_Dataset, 4_Validation_Dataset, 5_Testing_Dataset, 6_UAT_Dataset) มารวมกันด้วย pd.concat พร้อมติดป้ายกำกับชีทต้นทาง เพื่อให้กติกาทำความสะอาดเหมือนกันทุกชุดก่อนแยกกลับ
-จัดการค่า Null (Intentional vs Unexpected):
-เช็ค Scenario Type แยกค่า null ที่ตั้งใจใส่เป็น Negative Test Case (is_intentional_null) ออก เพื่อไม่ให้ลบทิ้งหรือเติมทับผิดพลาด
-ค่า Null ที่ไม่อยู่ใน Negative scenario จะถูก Impute ด้วยค่า median หรือประกอบข้อความจาก Brand + Model
-ทำความสะอาดข้อความ (Text Normalization):
-ดึง Emoji ออกจาก Title และ Description แยกเก็บเป็นฟีเจอร์ธง (Title_has_emoji, Description_has_emoji)
-ตัดช่องว่างส่วนเกิน และคำนวณความยาวข้อความ (Title_length, Description_length)
-Encode ฟีเจอร์ Flag: แปลงค่า string 'Yes'/'No' ในคอลัมน์ตรวจสอบ เช่น Duplicate Image, Keyword Stuffing, Profanity, Counterfeit ฯลฯ ให้เป็น 1 / 0
-Range Validation: ตรวจสอบขอบเขตตัวเลขตาม Data Dictionary เช่น Seller Rating (0.0-5.0), Risk Score (0-100), Confidence Score (0.0-1.0) และเช็คราคาไม่ให้ติดลบ
-One-Hot Encoding & Export: ทำ One-hot encode ให้กับหมวดหมู่ (Category, Condition, Image Quality) แล้วแยกชุดข้อมูลกลับเป็น listing_train_clean.csv, listing_val_clean.csv, listing_test_clean.csv, listing_uat_clean.csv
-Baseline Model: มีตัวอย่างการรัน RandomForestClassifier เพื่อทดสอบทำนายผลลัพธ์ Ground Truth
-PART 2: product recommendation dataset (dataset_recommendation.xlsx)
-(ระบบแนะนำสินค้าแก่ผู้ซื้อ)
+1.Abnormal Listing Detection — ระบบตรวจจับประกาศขายสินค้าที่ผิดปกติ ทุจริต หรือเป็นสแปม (dataset_abnormal_listing.xlsx)
+2.Product Recommendation System — ระบบแนะนำสินค้าให้แก่ผู้ซื้อ (dataset_recommendation.xlsx)
 
-บังคับใช้ Business Rules (BR002–BR004, BR009):
-ตรวจสอบรายการสินค้าที่ Product_Status ไม่ใช่ Active แต่ติดป้าย Accept
-ลบรายการที่ Buyer_ID + Product_ID ซ้ำซ้อนกัน (drop_duplicates)
-จัดการ Pipe-Delimited Fields: แปลงข้อความที่คั่นด้วย | ในคอลัมน์ประวัติ เช่น Search_History, View_History, Wishlist ให้กลายเป็น List และนับจำนวนรายการ (_count)
-PDPA / Privacy Scan (BR008): ใช้ Regex สแกนหาข้อมูลส่วนบุคคล (เบอร์โทร, อีเมล, เลขบัตรประชาชน) ในคอลัมน์ข้อความอิสระ (Search_History, Feedback)
-Validation & Consistency Checks:
-เช็คค่า Similarity / Recommendation Scores ให้อยู่ในช่วง 0.0 - 1.0
-ตรวจสอบเงื่อนไขความสอดคล้อง: Historical_Purchases <= Historical_Clicks <= Historical_Views
-Data Integration & Encoding: Join ตาราง Recommendation_Dataset กับ Buyer_Profile ด้วย Buyer_ID และทำ One-hot encoding ให้กับข้อมูลประเภท Category/Brand/Member Level
-Export & Baseline Model:
-บันทึกเป็นไฟล์ CSV ได้แก่ recommendation_clean.csv, cold_start_clean.csv, buyer_behavior_clean.csv, feedback_clean.csv
-มีโค้ดตัวอย่างการรัน RandomForestClassifier เพื่อทำนายผลลัพธ์ Expected_Result (Accept/Reject)
+🔍 สรุปการทำงานแบ่งตามส่วน (Pipeline Breakdown)
+PART 1: Abnormal Listing Detection Pipeline
+1.Data Concatenation & Isolation: รวมข้อมูลจาก 4 ชุด (Train, Validation, Test, UAT) เข้าด้วยกันชั่วคราวเพื่อใช้กฎทำความสะอาดเดียวกัน แล้วคงป้ายกำกับชุดข้อมูลไว้เพื่อแยกออกตอนท้าย
+2.Intentional Null Handling: จำแนกค่า Null ที่ถูกตั้งใจสร้างขึ้นในสคริปต์ทดสอบ (NEGATIVE / EDGE Scenarios) ไว้ ไม่ให้เผลอลบทิ้งหรือ Impute ค่าทับผิดพลาด
+3.Text Cleaning & Feature Extraction:
+    ทำความสะอาดข้อความ ลบสัญลักษณ์พิเศษ/Emoji และจัดระเบียบช่องว่าง
+    สกัดฟีเจอร์ Title_has_emoji และ Description_has_emoji เป็นตัวเลข (1/0)
+    คำนวณความยาวข้อความ Title_length และ Description_length
+4.Flag Encoding & Range Validation:
+    แปลงค่า string 'Yes'/'No' ในคอลัมน์ flag (เช่น Duplicate Image, Counterfeit, Spam Behavior) ให้เป็น 1/0
+    ตรวจสอบขอบเขตค่าตัวเลขตาม Data Dictionary (เช่น Seller Rating 0-5, Risk Score 0-100, Price >= 0)
+    Categorical Encoding (ป้องกัน Target Leakage): ทำ One-Hot Encoding ให้กับคอลัมน์ประเภท โดยถอดคอลัมน์ป้ายกำกับ เช่น Risk Band ออกจากฟีเจอร์ขาเข้า เพื่อป้องกันปัญหา Target Leakage
+5.Export & Baseline Model:
+แยกข้อมูลและส่งออกเป็นไฟล์ CSV 4 ไฟล์: listing_train_clean.csv, _val_, _test_, _uat_
+มีโค้ดประเมิน Baseline Model ด้วย RandomForestClassifier (ผลลัพธ์ Accuracy 94%)
 
-📂 ไฟล์ Output ที่สคริปต์สร้าง (เก็บไว้ในโฟลเดอร์ output/)
-output/listing_train_clean.csv
-output/listing_val_clean.csv
-output/listing_test_clean.csv
-output/listing_uat_clean.csv
-output/recommendation_clean.csv
-output/cold_start_clean.csv
-output/buyer_behavior_clean.csv
+PART 2: Product Recommendation System Pipeline
+1.Business Rules Enforcement:
+    ตรวจสอบสถานะสินค้า ต้องเป็น Active เท่านั้น (BR002–BR004)
+    ลบรายการที่ Buyer_ID + Product_ID ซ้ำซ้อนกันออก (BR009)
+2.Pipe-Delimited Processing: แปลประวัติการค้นหา/เข้าชมสินค้าที่คั่นด้วยเครื่องหมาย | (เช่น Search_History, Wishlist) ให้กลายเป็น Python List และนับจำนวนรายการ (_count)
+3.PDPA / Privacy Scan (BR008): สแกนหาข้อมูลส่วนบุคคลหลุดรอด (เบอร์โทร, อีเมล, เลขบัตรประชาชน) ในฟิลด์ข้อความอิสระ
+4.Data Integration & Feature Encoding:
+    Join ตาราง Recommendation_Dataset กับ Buyer_Profile ด้วย Buyer_ID
+    ทำ One-Hot Encoding ให้กับข้อมูลประเภทสินค้า ผู้ซื้อ และพฤติกรรม (Behavior_Type)
+5.Export & Dual Model Evaluation:
+    ส่งออกไฟล์ CSV สำหรับนำไปใช้งานต่อ: recommendation_clean.csv, cold_start_clean.csv, buyer_behavior_clean.csv, feedback_clean.csv
+ประเมิน Baseline Model 2 รูปแบบ:
+Binary Target (Accept vs Reject): สำหรับใช้งานจริงเชิงธุรกิจ (Accuracy 100%)
+Multi-class Target (3 Classes): สำหรับวิเคราะห์การแนะนำตาม Popularity/Cold-Start
+
+สรุปไฟล์ Output ที่สคริปต์ส่งออก (อยู่ในโฟลเดอร์ output/)
+    ชื่อไฟล์	เนื้อหา
+    listing_train_clean.csv / _val_ / _test_ / _uat_	ชุดข้อมูลตรวจจับประกาศผิดปกติที่คลีนแล้ว แยกตาม Split
+    recommendation_clean.csv	                        ชุดข้อมูลแนะนำสินค้าหลักที่ Join กับ Buyer Profile + Encode เรียบร้อย
+    cold_start_clean.csv	                            ข้อมูลผู้ซื้อกลุ่ม Cold-start (แยก List ประวัติแล้ว)
+    buyer_behavior_clean.csv	                        ประวัติพฤติกรรมผู้ซื้อ
+    feedback_clean.csv	                                ผลตอบรับการแนะนำสินค้า

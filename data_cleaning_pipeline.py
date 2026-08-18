@@ -149,6 +149,9 @@ def extract_and_clean_text(series):
 listing_all["Title_clean"], listing_all["Title_has_emoji"] = extract_and_clean_text(listing_all["Title"])
 listing_all["Description_clean"], listing_all["Description_has_emoji"] = extract_and_clean_text(listing_all["Description"])
 
+listing_all["Title_has_emoji"] = listing_all["Title_has_emoji"].astype(int)
+listing_all["Description_has_emoji"] = listing_all["Description_has_emoji"].astype(int)
+
 listing_all["Title_length"] = listing_all["Title_clean"].str.len()
 listing_all["Description_length"] = listing_all["Description_clean"].str.len()
 
@@ -203,7 +206,7 @@ print("Price ติดลบ:", neg_price.sum())
 
 """
 
-categorical_cols = ["Category", "Subcategory", "Condition", "Image Quality", "Risk Band"]
+categorical_cols = ["Category", "Subcategory", "Condition", "Image Quality"]
 categorical_cols = [c for c in categorical_cols if c in listing_all.columns]
 
 # เก็บชื่อคอลัมน์ก่อน encode ไว้ เพื่อคำนวณว่าคอลัมน์ dummy ใหม่ๆ มีอะไรบ้าง
@@ -224,7 +227,7 @@ FEATURE_COLS = (
        "Seller Rating", "Seller Total Listings", "Seller Violation Count",
        "Title_length", "Description_length", "Title_has_emoji", "Description_has_emoji"]
 )
-FEATURE_COLS = [c for c in FEATURE_COLS if c in listing_encoded.columns]
+FEATURE_COLS = [c for c in FEATURE_COLS if c in listing_encoded.columns and c not in ["Risk Band", "Risk Score", "Ground Truth", "Expected Result"]]
 
 LABEL_COLS = ["Ground Truth", "Expected Result", "Risk Score", "Risk Band"]
 
@@ -422,12 +425,17 @@ print("Shape หลัง join กับ Buyer_Profile:", reco_joined.shape)
 missing_profile = reco_joined["Age_Group"].isna().sum()
 print(f"แถวที่ Buyer_ID ไม่มีใน Buyer_Profile (อาจเป็น cold-start buyer): {missing_profile}")
 
+# Convert emoji boolean flags to 0/1
+for col in ["Is_New_Customer", "Has_Recent_Purchase"]:
+    if col in reco_joined.columns:
+        reco_joined[col] = reco_joined[col].astype(str).str.contains("✅|Yes|True", case=False).astype(int)
+
 """### 2.6 Encode categorical + เตรียม X, y สำหรับ ranking/classification model"""
 
 # หมายเหตุ: ตั้งใจไม่ใส่ 'Preferred_Category' / 'Preferred_Brand' ใน one-hot ตรงนี้
 # เพราะ cardinality สูงและซ้ำซ้อนกับ Category_Similarity/Brand_Similarity ที่คำนวณไว้แล้ว
 cat_cols_reco = ["Category", "Subcategory", "Brand", "Condition",
-                  "Member_Level", "Activity_Level", "Age_Group"]
+                  "Member_Level", "Activity_Level", "Age_Group", "Behavior_Type"]
 cat_cols_reco = [c for c in cat_cols_reco if c in reco_joined.columns]
 
 # เก็บชื่อคอลัมน์ก่อน encode ไว้ เพื่อคำนวณว่าคอลัมน์ dummy ใหม่ๆ มีอะไรบ้าง
@@ -463,13 +471,31 @@ print("บันทึก cold_start / buyer_behavior / feedback เรียบ
 
 from sklearn.model_selection import train_test_split
 
+# --- Option A: Binary Classification (Accept vs Reject) ---
+print("--- [Part 2 Model: Binary Target (Accept vs Reject)] ---")
+reco_encoded["Expected_Result_Binary"] = reco_encoded["Expected_Result"].replace({"Accept - Popularity Based": "Accept"})
+
+X_bin = reco_encoded[FEATURE_COLS_RECO].fillna(0)
+le_bin = LabelEncoder()
+y_bin = le_bin.fit_transform(reco_encoded["Expected_Result_Binary"])
+
+X_tr_bin, X_te_bin, y_tr_bin, y_te_bin = train_test_split(X_bin, y_bin, test_size=0.2, random_state=42, stratify=y_bin)
+
+clf_bin = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1, class_weight="balanced")
+clf_bin.fit(X_tr_bin, y_tr_bin)
+
+y_pred_bin = clf_bin.predict(X_te_bin)
+print(classification_report(y_te_bin, y_pred_bin, target_names=le_bin.classes_, zero_division=0))
+
+# --- Option B: Multi-class Classification (3 Classes) ---
+print("\n--- [Part 2 Model: Multi-class Target (3 Classes)] ---")
 X = reco_encoded[FEATURE_COLS_RECO].fillna(0)
 le2 = LabelEncoder()
 y = le2.fit_transform(reco_encoded["Expected_Result"])
 
 X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-clf2 = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+clf2 = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1, class_weight="balanced")
 clf2.fit(X_tr, y_tr)
 
 y_pred2 = clf2.predict(X_te)
