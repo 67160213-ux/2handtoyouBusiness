@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  ai-moderation-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 2handtoyou_ai_safety_api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+    volumes:
+      - ./models:/app/models
+      - ./output:/app/output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

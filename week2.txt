@@ -1,0 +1,112 @@
+เนื้อหาสำหรับนำไปใส่สไลด์นำเสนอ (Presentation Slides) ที่ปรับปรุงและเพิ่มเติมข้อมูลครบถ้วนทั้ง การทำ Data Cleaning 2 ชุดข้อมูล (dataset_abnormal_listing.xlsx และ dataset_recommendation.xlsx) และ สถาปัตยกรรม AI แนะนำคำอธิบายสินค้าด้วย Qwen2.5-VL + Web Search เรียบร้อยครับ:
+
+🖥️ Slide 1: ศึกษาวิธีการทำ AI ตรวจจับประกาศผิดปกติ (AI Safety Moderation)
+หัวข้อสไลด์: การศึกษาสถาปัตยกรรมและหลักการทำงานของ AI ตรวจจับประกาศผิดปกติ
+
+แนวคิดระบบ (Local AI Approach):
+
+ตรวจจับประกาศขายสินค้ามือสองที่ผิดกฎหมาย/ผิดปกติ ก่อนเผยแพร่ขึ้นบนแพลตฟอร์ม
+ประมวลผลแบบ Local AI บนเซิร์ฟเวอร์ของตัวเอง เพื่อความปลอดภัย ประหยัดค่าใช้จ่าย และไม่พึ่งพา API ภายนอก
+สถาปัตยกรรมแบบ Hybrid Multimodal (Text + Vision):
+
+Text Safety Model: ใช้โมเดล TF-IDF + Logistic Regression (ความแม่นยำ 94–100%) ร่วมกับ Regex Rule-based Scan ตรวจหาคีย์เวิร์ดสินค้าห้ามขาย 8 หมวดหมู่
+Vision Safety Inspector: โมเดลวิเคราะห์รูปภาพด้วย Pillow (image_safety_inspector.py) ตรวจไฟล์ภาพเสีย, ภาพเปล่าสีเดียว (Blank Image), ภาพสุ่มเสี่ยงโป๊เปลือย (Skin-Tone Ratio) และภาพซ้ำซ้อน (dhash)
+เกณฑ์การตัดสินใจ 3 ค่า (Risk Matrix Logic):
+
+🔴 ความเสี่ยงสูง (HIGH) $\rightarrow$ บล็อกแล้ว (BLOCKED): อาวุธ, ยาเสพติด, เอกสารปลอม, สินค้าอันตราย, สัตว์ผิดกฎหมาย, การพนัน
+🟡 ความเสี่ยงปานกลาง (MEDIUM) $\rightarrow$ รอเจ้าหน้าที่ (PENDING_REVIEW): สินค้าละเมิดลิขสิทธิ์, สินค้าควบคุม/ยา
+🟢 ความเสี่ยงต่ำ (LOW) $\rightarrow$ อนุมัติ (APPROVED): สินค้าปกติ
+
+
+🖥️ Slide 2: AI แนะนำคำอธิบายสินค้าด้วย Qwen2.5-VL (AI Description Generator)
+หัวข้อสไลด์: สถาปัตยกรรมระบบ AI แนะนำคำอธิบายสินค้าอัจฉริยะด้วย Qwen2.5-VL & Web Search
+
+Diagram แสดงการทำงาน:
+
+text
+[ รูปภาพสินค้าจากผู้ขาย ]
+           │
+           ▼
+    [ Qwen2.5-VL ] ──────────► อ่านภาพ ➔ สกัดชื่อรุ่น / ยี่ห้อ / ตำหนิ / สภาพสินค้า
+           │
+           ├────────────────► [ SerpAPI / Firecrawl ] ➔ ค้นหาราคาปัจจุบันในตลาดออนไลน์
+           │
+           ▼
+[ Qwen2.5-VL (Prompt) ] ──► รวมข้อมูล ➔ เจน "คำบรรยายสุดปัง" + "ราคาตลาด" + "Hashtags"
+รายละเอียด 3 ขั้นตอนการทำงาน:
+
+Image Understanding (Qwen2.5-VL): ผู้ขายอัปโหลดรูปถ่ายสินค้า $\rightarrow$ โมเดลอ่านรายละเอียดจากภาพเพื่อระบุยี่ห้อ, ชื่อรุ่นเต็ม, สี, และสภาพสินค้าโดยอัตโนมัติ
+Market Price Search (SerpAPI / Firecrawl): นำชื่อรุ่นที่วิเคราะห์ได้ ดึงข้อมูลราคาปัจจุบันจากเว็บอีคอมเมิร์ซในตลาดมาเปรียบเทียบ
+Content & Pricing Generation: นำผลวิเคราะห์ภาพ + ราคาตลาด เข้า Prompt เพื่อสร้าง:
+📝 คำบรรยายสุดปัง: ข้อความขายสินค้ามือสองที่อ่านง่าย ครบถ้วน น่าซื้อ
+💰 ราคาแนะนำตลาด: แสดงช่วงราคากลางมือสองในตลาดเพื่อช่วยผู้ขายตั้งราคา
+🏷️ Hashtags ยอดฮิต: แฮชแท็กติดเทรนด์เพื่อเพิ่มการมองเห็น
+
+
+🖥️ Slide 3: API ที่จะส่งให้ทีม SE (API Specification & Handover)
+หัวข้อสไลด์: เอกสารข้อกำหนด API (API Contract) สำหรับทีม Software Engineer (SE)
+
+รูปแบบบริการ: REST API รันด้วย FastAPI (พอร์ต 8000) รองรับ Docker Container (docker compose up -d)
+
+Endpoint 1: ตรวจจับประกาศผิดปกติ (POST /api/v1/ai/inspect-listing)
+
+Input (multipart/form-data): title, description, images (ไฟล์รูปภาพ)
+Output 3 ค่าหลัก:
+json
+{
+  "success": true,
+  "result": {
+    "category": "WEAPON",       // 1. หมวดหมู่ความผิดปกติ
+    "risk_level": "HIGH",       // 2. ระดับความเสี่ยง (HIGH / MEDIUM / LOW)
+    "status": "BLOCKED"         // 3. สถานะการดำเนินการ (BLOCKED / PENDING_REVIEW / APPROVED)
+  },
+  "metadata": {
+    "confidence_score": 0.99,
+    "detected_reasons": ["AI ตรวจพบเนื้อหาเข้าข่ายสินค้าผิดปกติหมวดหมู่ 'WEAPON'"]
+  }
+}
+Endpoint 2: AI แนะนำคำอธิบายสินค้า (POST /api/v1/ai/suggest-description)
+
+Input (JSON): title, condition, user_notes
+Output: suggested_title, suggested_description, safety_check
+Docker Readiness: จัดเตรียม Dockerfile, docker-compose.yml และคู่มือ README_DOCKER.md ครบถ้วน
+
+
+🖥️ Slide 4: ข้อมูล Dataset Clean ยังไง (Data Cleaning Pipeline 2 ชุดข้อมูล)
+หัวข้อสไลด์: กระบวนการทำความสะอาดและเตรียมข้อมูล (Data Cleaning Pipeline)
+
+📦 1. Abnormal Listing Dataset (dataset_abnormal_listing.xlsx - 25,000 รายการ)
+Intentional Null Handling: แยกแยะค่า Null ที่ตั้งใจสร้างขึ้นในเคสทดสอบ (NEGATIVE/EDGE) ด้วยธง is_intentional_null (ไม่ลบข้อมูลทดสอบทิ้ง)
+Text Cleaning & Feature Extraction: ลบ Emoji/สัญลักษณ์พิเศษ, สกัดฟีเจอร์ Title_length, Description_length และธง has_emoji
+Range Validation: ตรวจสอบ Seller Rating (0–5), Risk Score (0–100), Price >= 0 (ไม่พบค่าหลุดขอบเขต)
+One-Hot Encoding & Target Leakage Prevention: แปลงหมวดหมู่สินค้าเป็น One-Hot Encoding (177 คอลัมน์) โดยตัดคอลัมน์เฉลยออก
+🛍️ 2. Recommendation Dataset (dataset_recommendation.xlsx - 10,000 รายการ + Buyer Profile 1,000 รายการ)
+Business Rules Enforcement: กรองเฉพาะสินค้าสถานะ Active เท่านั้น (ตัดสถานะ Sold, Inactive, Deleted ออกไป 937 รายการ)
+Pipe-Delimited Processing: แปลงข้อความที่คั่นด้วย | เช่น Search_History, Wishlist เป็น List และคำนวณจำนวนรายการ (_count)
+PDPA & Privacy Scan: สแกนตรวจสอบและกำจัดข้อมูลส่วนบุคคลหลุดรอด (เบอร์โทร, อีเมล, เลขบัตรประชาชน) ในฟิลด์ข้อความอิสระ
+Deduplication: ตัดรายการที่ Buyer_ID + Product_ID ซ้ำซ้อนกันออก
+
+
+🖥️ Slide 5: หน้าตาข้อมูลที่ Clean แล้วเป็นยังไง (Clean Dataset Schema & Output Format)
+หัวข้อสไลด์: โครงสร้างและตัวอย่างชุดข้อมูลที่ผ่านการทำความสะอาดแล้ว (Clean Dataset Schema)
+
+ไฟล์ Output ที่ส่งออก (โฟลเดอร์ 
+
+output/
+):
+
+listing_train_clean.csv, _val_, _test_, _uat_ (ชุดข้อมูล Abnormal Listing แยกตาม Split)
+safety_train_prepared.csv (ชุดข้อมูล Label สเปก AI Moderation)
+recommendation_clean.csv (ชุดข้อมูลแนะนำสินค้าที่ Join กับ Buyer Profile แล้ว)
+cold_start_clean.csv / buyer_behavior_clean.csv / feedback_clean.csv
+ตารางเปรียบเทียบข้อมูล Before vs After:
+
+ชุดข้อมูล / ฟีเจอร์	ก่อนทำความสะอาด (Raw Dataset)	หลังทำความสะอาดแล้ว (Cleaned Dataset)
+Abnormal Listing (ข้อความ/Null)	มี Emoji, Null ใน Title/Price (ไม่ทราบสาเหตุ)	ลบ Emoji, สกัดฟีเจอร์ความยาวข้อความ, ติดธง is_intentional_null
+Abnormal Listing (Features)	คอลัมน์ข้อความประเภทสินค้าเดิม	One-Hot Encoded เรียบร้อย รวม 177 ฟีเจอร์พร้อมป้อนโมเดล
+Abnormal Listing (Target)	ไม่มีคอลัมน์เป้าหมาย AI	เพิ่ม ai_category, ai_risk_level, ai_status ครบ 3 ค่า
+Recommendation (Status)	ปะปนสินค้าสถานะ Sold/Inactive	กรองเหลือเฉพาะสินค้า Active 9,063 รายการ
+Recommendation (Privacy)	อาจมีเบอร์โทร/อีเมลหลุดในข้อความ	สแกนกำจัด PDPA เรียบร้อย + แปลง Pipe string เป็น List
+ตัวอย่างแถวข้อมูลที่ Clean แล้ว (safety_train_prepared.csv):
+Title_clean: "ขายปืนสั้นมือสอง" | Description_clean: "สภาพ 90% แถมกระสุนซ้อม"
+ai_category: WEAPON | ai_risk_level: HIGH | ai_status: BLOCKED
