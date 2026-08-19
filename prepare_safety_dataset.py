@@ -62,38 +62,54 @@ PROHIBITED_RULES = {
     ]
 }
 
+EXCLUSION_RULES = [
+    r"ปืนฉีดน้ำ", r"ปืนของเล่น", r"เด็กเล่น", r"บีบีกัน.*(ถูกกฎหมาย|ไม่ดัดแปลง)",
+    r"กัญชาแมว", r"โมเดล.*ปืน", r"สเกล.*1/", r"หนังสือ.*ยา"
+]
+
 def map_category(row):
     """
     ตรวจสอบข้อความ (Title, Description) และ Flags เดิม เพื่อระบุหมวดหมู่ความผิดปกติ
+    - อัปเดต: ให้ความสำคัญกับ Ground Truth จากไฟล์ต้นฉบับก่อนเพื่อลดปัญหา Overfitting จาก Regex
     """
     title = str(row.get("Title", ""))
     desc = str(row.get("Description", ""))
     text = f"{title} {desc}".lower()
     
-    # 1. เช็กตาม Rules & Regex
+    gt = str(row.get("Ground Truth", "")).strip().upper()
+    counterfeit_flag = row.get("Counterfeit_flag", 0)
+    illegal_flag = row.get("Illegal Product_flag", 0)
+    
+    # 1. เช็กตาม Ground Truth ก่อน (Human Annotated / Actual Data)
+    if gt and gt != "NAN" and gt != "":
+        if gt == "COUNTERFEIT" or counterfeit_flag == 1:
+            return "COUNTERFEIT"
+        elif gt == "PROHIBITED_PRODUCT" or illegal_flag == 1:
+            # พยายามระบุหมวดหมู่ย่อยของ PROHIBITED_PRODUCT
+            if "id" in text or "card" in text or "currency" in text or "เอกสาร" in text:
+                return "ILLEGAL_DOCS"
+            elif "firearm" in text or "handgun" in text or "gun" in text or "ปืน" in text:
+                return "WEAPON"
+            elif "wildlife" in text or "animal" in text or "สัตว์" in text:
+                return "WILDLIFE_ANIMAL"
+            return "WEAPON" # Default Prohibited Fallback
+        elif gt == "NORMAL":
+            return "NORMAL"
+        else:
+            if gt in PROHIBITED_RULES.keys():
+                return gt
+
+    # 2. เช็กกฎยกเว้น (Exclusion Rules) ถ้ามีคำที่ยกเว้น ถือว่าปกติ (ลด False Positive)
+    for pattern in EXCLUSION_RULES:
+        if re.search(pattern, text, re.IGNORECASE):
+            return "NORMAL"
+            
+    # 3. ถ้าไม่มีข้อมูล Ground Truth ค่อยใช้ Rules & Regex ในการสแกนจับ
     for cat, regex_list in PROHIBITED_RULES.items():
         for pattern in regex_list:
             if re.search(pattern, text, re.IGNORECASE):
                 return cat
                 
-    # 2. เช็กตาม Ground Truth หรือ Flags ใน Dataset เดิม
-    gt = str(row.get("Ground Truth", ""))
-    counterfeit_flag = row.get("Counterfeit_flag", 0)
-    illegal_flag = row.get("Illegal Product_flag", 0)
-    
-    if counterfeit_flag == 1 or gt == "COUNTERFEIT":
-        return "COUNTERFEIT"
-    
-    if illegal_flag == 1 or gt == "PROHIBITED_PRODUCT":
-        # กรณีเป็นสินค้าห้ามขายแต่ไม่ชน keyword เฉพาะเจาะจง
-        if "id" in text or "card" in text or "currency" in text:
-            return "ILLEGAL_DOCS"
-        elif "firearm" in text or "handgun" in text or "gun" in text:
-            return "WEAPON"
-        elif "wildlife" in text or "animal" in text:
-            return "WILDLIFE_ANIMAL"
-        return "WEAPON" # Default Prohibited Fallback
-        
     return "NORMAL"
 
 def assign_risk_and_status(category):

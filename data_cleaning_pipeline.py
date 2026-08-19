@@ -21,10 +21,15 @@ Output: ไฟล์ CSV ที่ทำความสะอาดแล้ว 
 ## 0. Setup
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 import pandas as pd
 import numpy as np
 import re
 import os
+import emoji
 
 pd.set_option('display.max_columns', 60)
 pd.set_option('display.width', 200)
@@ -132,17 +137,15 @@ print("เหลือ null นอก intentional case:",
 
 """
 
-EMOJI_PATTERN = re.compile(
-    "["
-    "\U0001F300-\U0001FAFF"
-    "\U00002600-\U000027BF"
-    "\U0001F1E0-\U0001F1FF"
-    "]+", flags=re.UNICODE
-)
-
 def extract_and_clean_text(series):
-    has_emoji = series.fillna("").str.contains(EMOJI_PATTERN)
-    cleaned = series.fillna("").apply(lambda s: EMOJI_PATTERN.sub("", s))
+    def remove_emoji(text):
+        return emoji.replace_emoji(text, replace='')
+
+    def check_emoji(text):
+        return emoji.emoji_count(text) > 0
+
+    has_emoji = series.fillna("").apply(check_emoji)
+    cleaned = series.fillna("").apply(remove_emoji)
     cleaned = cleaned.str.replace(r"\s+", " ", regex=True).str.strip()
     return cleaned, has_emoji
 
@@ -242,277 +245,4 @@ for sheet, name in [("3_Training_Dataset", "train"), ("4_Validation_Dataset", "v
     subset.to_csv(out_path, index=False, encoding="utf-8-sig")
     print(f"{name}: {subset.shape} -> {out_path}")
 
-"""### 1.8 ตัวอย่างเตรียม X, y พร้อมเข้าโมเดล classification
-
-(ตัวอย่างสั้นๆ ใช้ RandomForest ทำนาย `Ground Truth` — ปรับ/เปลี่ยนโมเดลได้ตามต้องการ)
-
-"""
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report
-
-X_train = cleaned_splits["train"][FEATURE_COLS].fillna(0)
-X_val   = cleaned_splits["val"][FEATURE_COLS].fillna(0)
-
-le = LabelEncoder()
-y_train = le.fit_transform(cleaned_splits["train"]["Ground Truth"])
-y_val   = le.transform(cleaned_splits["val"]["Ground Truth"])
-
-clf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
-clf.fit(X_train, y_train)
-
-y_pred = clf.predict(X_val)
-print(classification_report(y_val, y_pred, target_names=le.classes_, zero_division=0))
-
-"""---
-# PART 2 — Product Recommendation Dataset
-
-โครงสร้างไฟล์: `01_Data_Dictionary`, `02_Business_Rules`, `03_Buyer_Profile`, `04_Buyer_Behavior`,
-`05_Recommendation_Dataset`, `06_Cold_Start_Dataset`, `07_Recommendation_Feedback`,
-`08_Coverage_Matrix`, `09_Acceptance_Criteria`
-
-หมายเหตุ: ชื่อไฟล์ต้นทางระบุว่า "แนะนำคำอธิบายสินค้า" แต่เนื้อหาจริงคือระบบ **แนะนำสินค้า (recommendation)**
-ไม่ใช่การ generate คำอธิบายสินค้า — โปรดตรวจสอบว่าตรงกับ use case ที่ต้องการ
-
-"""
-
-xl2 = pd.ExcelFile(FILE_2)
-print(xl2.sheet_names)
-
-bus_rules_2 = xl2.parse("02_Business_Rules", header=3)
-data_dict_2 = xl2.parse("01_Data_Dictionary", header=3)
-bus_rules_2
-
-buyer_profile  = xl2.parse("03_Buyer_Profile", header=3)
-buyer_behavior = xl2.parse("04_Buyer_Behavior", header=3)
-reco           = xl2.parse("05_Recommendation_Dataset", header=3)
-cold_start     = xl2.parse("06_Cold_Start_Dataset", header=3)
-feedback       = xl2.parse("07_Recommendation_Feedback", header=3)
-
-for name, df in [("buyer_profile", buyer_profile), ("buyer_behavior", buyer_behavior),
-                  ("reco", reco), ("cold_start", cold_start), ("feedback", feedback)]:
-    print(name, df.shape)
-
-"""### 2.1 บังคับ Business Rules ก่อนทำความสะอาดอื่น (BR002–BR004, BR009)
-
-- **BR002-BR004**: ห้ามแนะนำสินค้าที่ `Product_Status` เป็น Sold / Inactive / Deleted
-- **BR009**: ห้ามมี `Buyer_ID` + `Product_ID` ซ้ำกันใน Recommendation Dataset
-
-"""
-
-print("Product_Status ก่อนกรอง:")
-print(reco["Product_Status"].value_counts())
-
-# BR002-BR004: กรองเฉพาะ Active เป็นชุดเทรนหลัก แต่เก็บชุดที่ไม่ Active ไว้ตรวจสอบว่าถูก label REJECT ถูกต้องหรือไม่
-invalid_status_but_accepted = reco[
-    (reco["Product_Status"] != "Active") & (reco["Expected_Result"].str.startswith("Accept"))
-]
-print(f"\nพบ {len(invalid_status_but_accepted)} แถวที่ Product_Status ไม่ Active แต่ label เป็น Accept -> ผิด Business Rule ต้องตรวจสอบ/แก้ label")
-invalid_status_but_accepted[["Dataset_ID", "Buyer_ID", "Product_ID", "Product_Status", "Expected_Result"]].head(10)
-
-# BR009: เช็ค duplicate Buyer_ID + Product_ID
-dup_mask = reco.duplicated(subset=["Buyer_ID", "Product_ID"], keep=False)
-print(f"แถวที่ Buyer_ID+Product_ID ซ้ำ: {dup_mask.sum()}")
-
-reco_dedup = reco.drop_duplicates(subset=["Buyer_ID", "Product_ID"], keep="first").copy()
-print("Shape ก่อน/หลัง dedup:", reco.shape, "->", reco_dedup.shape)
-
-"""### 2.2 แยก pipe-delimited fields เป็น list
-
-`Search_History`, `View_History`, `Click_History`, `Wishlist`, `Favorite`, `Purchase_History`
-เก็บเป็นข้อความคั่นด้วย `|` — แปลงเป็น list เพื่อใช้งานง่ายขึ้น (เช่น เข้า embedding model)
-
-"""
-
-def split_pipe(series):
-    return series.fillna("").apply(
-        lambda s: [x.strip() for x in s.split("|") if x.strip()] if isinstance(s, str) else []
-    )
-
-pipe_cols_behavior = ["Search_History", "View_History", "Click_History",
-                       "Wishlist", "Favorite", "Purchase_History"]
-pipe_cols_behavior = [c for c in pipe_cols_behavior if c in buyer_behavior.columns]
-
-for col in pipe_cols_behavior:
-    buyer_behavior[col + "_list"] = split_pipe(buyer_behavior[col])
-    buyer_behavior[col + "_count"] = buyer_behavior[col + "_list"].apply(len)
-
-buyer_behavior[[c for c in pipe_cols_behavior] + [c + "_count" for c in pipe_cols_behavior]].head(5)
-
-# ทำแบบเดียวกันกับ cold_start dataset
-pipe_cols_cold = ["Search_History", "View_History", "Wishlist", "Favorite",
-                   "Purchase_History", "Recommended_Products"]
-pipe_cols_cold = [c for c in pipe_cols_cold if c in cold_start.columns]
-
-for col in pipe_cols_cold:
-    cold_start[col + "_list"] = split_pipe(cold_start[col])
-    cold_start[col + "_count"] = cold_start[col + "_list"].apply(len)
-
-cold_start[pipe_cols_cold[:2] + [c + "_count" for c in pipe_cols_cold[:2]]].head(5)
-
-"""### 2.3 ตรวจสอบข้อมูลอ่อนไหว (Privacy — BR008)
-
-BR008 ห้ามมีข้อมูล PDPA เช่น เบอร์โทร/อีเมล/บัตรประชาชน/พิกัด GPS ปนอยู่ในฟิลด์ข้อความอิสระ
-(`Search_History`, `Feedback`) — สแกนคร่าวๆ ด้วย regex ก่อนใช้งานจริง
-
-"""
-
-PII_PATTERNS = {
-    "phone": r"0[689]\d{8}|0\d{1,2}-?\d{3}-?\d{4}",
-    "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
-    "citizen_id": r"\b\d{13}\b",
-}
-
-def scan_pii(series, col_name):
-    hits = {}
-    for label, pattern in PII_PATTERNS.items():
-        mask = series.fillna("").astype(str).str.contains(pattern, regex=True)
-        if mask.sum() > 0:
-            hits[label] = mask.sum()
-    return hits
-
-for col in ["Search_History"]:
-    if col in buyer_behavior.columns:
-        print(col, "->", scan_pii(buyer_behavior[col], col))
-
-if "Feedback" in feedback.columns:
-    print("Feedback ->", scan_pii(feedback["Feedback"], "Feedback"))
-
-"""### 2.4 ตรวจสอบขอบเขตค่า (0.00–1.00 scores) และความสอดคล้องของตัวเลข
-
-- `Popularity_Score`, `Trending_Score`, `Embedding_Similarity`, `Category_Similarity`,
-  `Brand_Similarity`, `Price_Similarity`, `Recommendation_Score`: ต้องอยู่ 0.00–1.00
-- `Confidence_Score`: ต้องอยู่ 0.50–1.00
-- `Historical_Purchases <= Historical_Clicks <= Historical_Views` (ตาม Data Dictionary)
-
-"""
-
-score_cols_0_1 = ["Popularity_Score", "Trending_Score", "Embedding_Similarity",
-                   "Category_Similarity", "Brand_Similarity", "Price_Similarity",
-                   "Recommendation_Score"]
-score_cols_0_1 = [c for c in score_cols_0_1 if c in reco_dedup.columns]
-
-for col in score_cols_0_1:
-    out_of_range = ~reco_dedup[col].between(0.0, 1.0)
-    print(f"{col}: {out_of_range.sum()} แถวหลุดขอบเขต [0,1]")
-
-if "Confidence_Score" in reco_dedup.columns:
-    bad_conf = ~reco_dedup["Confidence_Score"].between(0.5, 1.0)
-    print(f"Confidence_Score: {bad_conf.sum()} แถวหลุดขอบเขต [0.5,1.0]")
-
-# ความสอดคล้อง Historical_*
-inconsistent = reco_dedup[
-    (reco_dedup["Historical_Purchases"] > reco_dedup["Historical_Clicks"]) |
-    (reco_dedup["Historical_Clicks"] > reco_dedup["Historical_Views"])
-]
-print(f"\nแถวที่ Historical_Purchases/Clicks/Views ไม่สอดคล้องกัน: {len(inconsistent)}")
-
-"""### 2.5 Join ตารางเข้าด้วยกันให้เป็น feature table เดียว
-
-รวม `Recommendation_Dataset` (แกนหลัก) กับ `Buyer_Profile` ผ่าน `Buyer_ID`
-
-"""
-
-reco_joined = reco_dedup.merge(
-    buyer_profile,
-    on="Buyer_ID",
-    how="left",
-    suffixes=("", "_buyer_profile")
-)
-print("Shape หลัง join กับ Buyer_Profile:", reco_joined.shape)
-
-missing_profile = reco_joined["Age_Group"].isna().sum()
-print(f"แถวที่ Buyer_ID ไม่มีใน Buyer_Profile (อาจเป็น cold-start buyer): {missing_profile}")
-
-# Convert emoji boolean flags to 0/1
-for col in ["Is_New_Customer", "Has_Recent_Purchase"]:
-    if col in reco_joined.columns:
-        reco_joined[col] = reco_joined[col].astype(str).str.contains("✅|Yes|True", case=False).astype(int)
-
-"""### 2.6 Encode categorical + เตรียม X, y สำหรับ ranking/classification model"""
-
-# หมายเหตุ: ตั้งใจไม่ใส่ 'Preferred_Category' / 'Preferred_Brand' ใน one-hot ตรงนี้
-# เพราะ cardinality สูงและซ้ำซ้อนกับ Category_Similarity/Brand_Similarity ที่คำนวณไว้แล้ว
-cat_cols_reco = ["Category", "Subcategory", "Brand", "Condition",
-                  "Member_Level", "Activity_Level", "Age_Group", "Behavior_Type"]
-cat_cols_reco = [c for c in cat_cols_reco if c in reco_joined.columns]
-
-# เก็บชื่อคอลัมน์ก่อน encode ไว้ เพื่อคำนวณว่าคอลัมน์ dummy ใหม่ๆ มีอะไรบ้าง
-# (แม่นยำกว่าการเดาด้วย substring match ซึ่งอาจชนกับคอลัมน์อื่น เช่น 'Category_Similarity', 'Preferred_Brand')
-cols_before_reco = set(reco_joined.columns)
-reco_encoded = pd.get_dummies(reco_joined, columns=cat_cols_reco, prefix=cat_cols_reco)
-dummy_cols_reco = [c for c in reco_encoded.columns if c not in cols_before_reco]
-
-FEATURE_COLS_RECO = (
-    score_cols_0_1
-    + ["Historical_Clicks", "Historical_Views", "Historical_Purchases",
-       "Seller_Rating", "Price"]
-    + dummy_cols_reco
-)
-FEATURE_COLS_RECO = [c for c in FEATURE_COLS_RECO if c in reco_encoded.columns]
-
-print(f"จำนวนฟีเจอร์: {len(FEATURE_COLS_RECO)}")
-
-out_path = os.path.join(OUTPUT_DIR, "recommendation_clean.csv")
-reco_encoded.to_csv(out_path, index=False, encoding="utf-8-sig")
-print("บันทึกแล้ว ->", out_path)
-
-cold_start.to_csv(os.path.join(OUTPUT_DIR, "cold_start_clean.csv"), index=False, encoding="utf-8-sig")
-buyer_behavior.to_csv(os.path.join(OUTPUT_DIR, "buyer_behavior_clean.csv"), index=False, encoding="utf-8-sig")
-feedback.to_csv(os.path.join(OUTPUT_DIR, "feedback_clean.csv"), index=False, encoding="utf-8-sig")
-print("บันทึก cold_start / buyer_behavior / feedback เรียบร้อย")
-
-"""### 2.7 ตัวอย่างเตรียมโมเดล ranking/classification
-
-ทำนาย `Expected_Result` (Accept/Reject/Accept-Popularity Based) จากฟีเจอร์ similarity + historical
-
-"""
-
-from sklearn.model_selection import train_test_split
-
-# --- Option A: Binary Classification (Accept vs Reject) ---
-print("--- [Part 2 Model: Binary Target (Accept vs Reject)] ---")
-reco_encoded["Expected_Result_Binary"] = reco_encoded["Expected_Result"].replace({"Accept - Popularity Based": "Accept"})
-
-X_bin = reco_encoded[FEATURE_COLS_RECO].fillna(0)
-le_bin = LabelEncoder()
-y_bin = le_bin.fit_transform(reco_encoded["Expected_Result_Binary"])
-
-X_tr_bin, X_te_bin, y_tr_bin, y_te_bin = train_test_split(X_bin, y_bin, test_size=0.2, random_state=42, stratify=y_bin)
-
-clf_bin = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1, class_weight="balanced")
-clf_bin.fit(X_tr_bin, y_tr_bin)
-
-y_pred_bin = clf_bin.predict(X_te_bin)
-print(classification_report(y_te_bin, y_pred_bin, target_names=le_bin.classes_, zero_division=0))
-
-# --- Option B: Multi-class Classification (3 Classes) ---
-print("\n--- [Part 2 Model: Multi-class Target (3 Classes)] ---")
-X = reco_encoded[FEATURE_COLS_RECO].fillna(0)
-le2 = LabelEncoder()
-y = le2.fit_transform(reco_encoded["Expected_Result"])
-
-X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-clf2 = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1, class_weight="balanced")
-clf2.fit(X_tr, y_tr)
-
-y_pred2 = clf2.predict(X_te)
-print(classification_report(y_te, y_pred2, target_names=le2.classes_, zero_division=0))
-
-"""---
-## สรุปไฟล์ output ที่ได้
-
-| ไฟล์ | เนื้อหา |
-|---|---|
-| `output/listing_train_clean.csv` / `_val_` / `_test_` / `_uat_` | Abnormal Listing Detection แต่ละชุด (ทำความสะอาด + encode แล้ว) |
-| `output/recommendation_clean.csv` | Recommendation Dataset หลัก (join กับ Buyer Profile + encode แล้ว) |
-| `output/cold_start_clean.csv` | Cold-start dataset (แยก list แล้ว) |
-| `output/buyer_behavior_clean.csv` | Buyer Behavior (แยก pipe-delimited fields แล้ว) |
-| `output/feedback_clean.csv` | Recommendation Feedback |
-
-ขั้นตอนถัดไปที่แนะนำ: ปรับ hyperparameter, ลอง gradient boosting (XGBoost/LightGBM),
-และเพิ่ม cross-validation แทนการแบ่ง train/test ครั้งเดียว
-
-"""
+print("✅ Data Cleaning Pipeline เสร็จสมบูรณ์! พร้อมนำไฟล์ .csv ไปใช้ใน prepare_safety_dataset.py ต่อไป")

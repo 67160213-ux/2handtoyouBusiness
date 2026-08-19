@@ -113,3 +113,13 @@ Accept - Popularity Based       0.00      0.00      0.00       104
                  accuracy                           0.94      2000
                 macro avg       0.64      0.66      0.65      2000
              weighted avg       0.90      0.94      0.92      2000
+
+
+สรุปข้อมูล Training Set ที่ได้ (จาก 20,000 รายการ):
+
+สินค้าปกติ (NORMAL): 19,272 รายการ (สถานะ APPROVED)
+สินค้าผิดปกติ/ต้องสงสัย (รวม 728 รายการ) แบ่งเป็น:
+ละเมิดลิขสิทธิ์ (COUNTERFEIT): 364 รายการ (สถานะ PENDING_REVIEW / ความเสี่ยง MEDIUM)
+อาวุธ (WEAPON): 248 รายการ (สถานะ BLOCKED / ความเสี่ยง HIGH)
+เอกสารผิดกฎหมาย (ILLEGAL_DOCS): 105 รายการ (สถานะ BLOCKED / ความเสี่ยง HIGH)
+สัตว์ป่า/สัตว์สงวน (WILDLIFE_ANIMAL): 11 รายการ (สถานะ BLOCKED / ความเสี่ยง HIGH)
